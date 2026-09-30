@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest / testing caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases and runtime data
+data/
+*.sqlite3
+*.db
+
+# Spreadsheets & exported outputs
+*.xlsx
+*.csv
+
+# Environment & secrets
+.env
+*.env
+service_account.json
+credentials.json
+token.json
+
+# IDE & Editor caches
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
