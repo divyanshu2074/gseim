@@ -1,0 +1,95 @@
+name: GSEIM Ecosystem Intelligence Monitor
+
+on:
+  # 1. Automatic daily schedule at 06:00 UTC (11:30 AM IST)
+  schedule:
+    - cron: '0 6 * * *'
+
+  # 2. Manual trigger from GitHub UI ("Run workflow" button)
+  workflow_dispatch:
+    inputs:
+      sample_size:
+        description: 'Number of sources to sample (0 = all 147 sources)'
+        required: false
+        default: '0'
+      method:
+        description: 'Crawl method filter'
+        required: false
+        default: 'ALL'
+        type: choice
+        options:
+          - ALL
+          - RSS
+          - SITEMAP
+          - HTML
+          - ATS
+      sync_sheets:
+        description: 'Sync live to Google Sheets (requires GCP_SA_KEY secret)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  run-monitor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run automated test suite
+        run: |
+          python -m pytest tests/ -v
+
+      - name: Configure Google Credentials (Optional)
+        if: ${{ inputs.sync_sheets || env.HAS_GCP_SECRET == 'true' }}
+        env:
+          GCP_KEY: ${{ secrets.GCP_SA_KEY }}
+          HAS_GCP_SECRET: ${{ secrets.GCP_SA_KEY != '' }}
+        run: |
+          if [ -n "$GCP_KEY" ]; then
+            echo "$GCP_KEY" > service_account.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$GITHUB_WORKSPACE/service_account.json" >> $GITHUB_ENV
+            echo "Google Service Account key configured."
+          fi
+
+      - name: Execute GSEIM Crawler Pipeline
+        run: |
+          SAMPLE="${{ github.event.inputs.sample_size || '0' }}"
+          METHOD="${{ github.event.inputs.method || 'ALL' }}"
+          SYNC_FLAG=""
+          if [ "${{ github.event.inputs.sync_sheets }}" = "true" ] || [ -f "service_account.json" ]; then
+            SYNC_FLAG="--sync-sheets"
+          fi
+
+          echo "Running GSEIM with sample=$SAMPLE, method=$METHOD, sync_flag=$SYNC_FLAG"
+          python main.py --sample "$SAMPLE" --method "$METHOD" $SYNC_FLAG
+
+      - name: Upload Excel & Database Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecosystem-monitor-results-${{ github.run_id }}
+          path: |
+            data/global_startup_ecosystem_monitor.xlsx
+            data/gseim.sqlite3
+          retention-days: 30
+
+      - name: Output Run Summary to Job Summary
+        run: |
+          echo "### 🚀 GSEIM Monitor Execution Completed" >> $GITHUB_STEP_SUMMARY
+          echo "The intelligence crawl has completed successfully." >> $GITHUB_STEP_SUMMARY
+          echo "- **Excel Mirror**: Downloadable from the artifacts section of this run." >> $GITHUB_STEP_SUMMARY
+          echo "- **Sources Monitored**: 147 seed sources" >> $GITHUB_STEP_SUMMARY
